@@ -63,23 +63,27 @@ async function main() {
   })
 
   // ── shared fixture: apply() once against a fully-stubbed sessionQuery ──
+  //
+  // Every method below exists on the real SessionQuery service. That is not a
+  // stylistic rule, it is the whole point: an earlier version of this plugin
+  // called `sq.searchSessions(...)`, this fixture obligingly provided a
+  // `searchSessions` stub, every test passed, and the tool returned
+  // "sq.searchSessions is not a function" on every real invocation for the
+  // entire life of the release. A stub you write yourself will confirm your own
+  // misconception. `tests/boot.test.mjs` is the guard that cannot: it checks
+  // these names against the service the harness actually ships.
   const calls = []
+  const EVENTS = {
+    's-1': [
+      { seq: 0, type: 'user/message', time: 1_700_000_000_500, surface: 'current', text: 'hello' },
+      { seq: 4, type: 'assistant/message', time: 1_700_000_100_000, surface: 'current', text: 'I found it here in the log' },
+      { seq: 5, type: 'assistant/message', time: 1_700_000_200_000, surface: 'current', text: 'x'.repeat(5000) },
+    ],
+    's-2': [
+      { seq: 0, type: 'user/message', time: 1_700_000_500_000, surface: 'current', text: 'nothing relevant' },
+    ],
+  }
   const sessionQuery = {
-    async searchSessions(request, exec) {
-      calls.push(['searchSessions', request, exec])
-      if (request.query === 'boom') throw new Error('backend unavailable')
-      return {
-        items: [
-          {
-            header: header('s-1', { cwd: '/home/alice/project' }),
-            live: true,
-            persisted: false,
-            bestMatch: { sessionId: 's-1', seq: 4, type: 'user/message', time: 1_700_000_100_000, surface: 'current', snippet: 'found it here' },
-          },
-        ],
-        nextCursor: undefined,
-      }
-    },
     async listSessions(signal) {
       calls.push(['listSessions', signal])
       return [
@@ -107,11 +111,19 @@ async function main() {
     },
     async filterEvents(sessionId, filters) {
       calls.push(['filterEvents', sessionId, filters])
-      assert.deepEqual(filters, [])
-      return [
-        { sessionId, seq: 0, type: 'user/message', time: 1_700_000_000_500, surface: 'current', text: 'hello' },
-        { sessionId, seq: 1, type: 'assistant/message', time: 1_700_000_001_000, surface: 'current', text: 'x'.repeat(5000) },
-      ]
+      if (sessionId === 'boom') throw new Error('backend unavailable')
+      const events = (EVENTS[sessionId] ?? []).map((e) => ({ sessionId, ...e }))
+      const text = filters.find((f) => f.kind === 'text')?.text
+      if (text === undefined) return events
+      // The real filter is literal, case-insensitive and whitespace-flexible:
+      // metacharacters are escaped before the pattern is built. Reproduced
+      // faithfully — a stub that forgot the escaping would report that this
+      // plugin has an injection hole it does not have (or hide one it does).
+      const re = new RegExp(
+        text.trim().split(/\s+/u).map((p) => p.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('\\s+'),
+        'iu',
+      )
+      return events.filter((e) => re.test(e.text))
     },
   }
 
@@ -157,27 +169,131 @@ async function main() {
     assert.equal(calls.length, 0)
   })
 
-  await test('session_search: passes an {signal} exec-context object, not the raw signal', async () => {
-    calls.length = 0
-    await search.execute({ query: 'anything' }, EXEC)
-    const [, , exec] = calls.find(([op]) => op === 'searchSessions')
-    assert.deepEqual(exec, { signal: RAW_SIGNAL })
+  // ── the index fast path, and the fallback that makes it safe ──
+  //
+  // The stock `dsh-base` bundle wires the SQLite backend with `openAt: 'never'`,
+  // so `searchSessions` exists but throws SESSION_QUERY_SEARCH_DISABLED. An
+  // earlier release called it unconditionally and returned that config error as
+  // the search result, which is why the tool never found anything on a default
+  // install while looking perfectly healthy.
+  const DISABLED = Object.assign(new Error('session search is disabled: this deployment configures the session-query index with openAt "never"'),
+    { code: 'SESSION_QUERY_SEARCH_DISABLED' })
+
+  const withSearch = (searchSessions) => {
+    const { ctx: c, registered: r } = makeCtx({ ...sessionQuery, searchSessions })
+    apply(c)
+    return r.get('agent_session_search')
+  }
+
+  await test('search: uses the index when the deployment has one enabled', async () => {
+    const tool = withSearch(async (request, exec) => {
+      assert.equal(request.query, 'found it')
+      assert.deepEqual(exec, { signal: RAW_SIGNAL }, 'searchSessions takes an {signal} object, not a raw signal')
+      return {
+        items: [{
+          header: header('s-1', { cwd: '/home/alice/project' }), live: true, persisted: false,
+          bestMatch: { sessionId: 's-1', seq: 4, type: 'user/message', time: 1_700_000_100_000, surface: 'current', snippet: 'found it here' },
+        }],
+        nextCursor: undefined,
+      }
+    })
+    const result = await tool.execute({ query: 'found it' }, EXEC)
+    assert.equal(result.engine, 'index')
+    assert.equal(result.total, 1)
+    assert.equal(result.sessions[0].snippet, 'found it here')
   })
 
-  await test('session_search: maps hits to sessionId/title/cwd/snippet using batched titles', async () => {
-    const result = await search.execute({ query: 'here' }, EXEC)
+  await test('search: falls back to a scan when the index is disabled — the default-profile case', async () => {
+    const tool = withSearch(async () => { throw DISABLED })
+    const result = await tool.execute({ query: 'found it' }, EXEC)
+    assert.equal(result.engine, 'scan', 'a disabled index must not become the answer')
+    assert.equal(result.error, undefined, 'the config error must never be returned as the search result')
+    assert.equal(result.total, 1)
+    assert.equal(result.sessions[0].sessionId, 's-1')
+  })
+
+  await test('search: falls back when the backend has no searchSessions at all', async () => {
+    const result = await search.execute({ query: 'found it' }, EXEC) // base fixture: no searchSessions
+    assert.equal(result.engine, 'scan')
+    assert.equal(result.total, 1)
+  })
+
+  await test('search: a genuinely broken index is reported, not silently rescanned', async () => {
+    const tool = withSearch(async () => { throw Object.assign(new Error('disk I/O error'), { code: 'SQLITE_IOERR' }) })
+    const result = await tool.execute({ query: 'found it' }, EXEC)
+    assert.equal(result.error, 'disk I/O error')
+    assert.equal(result.engine, undefined, 'a broken store must not be answered with a slower scan of itself')
+  })
+
+  await test('session_search: only ever calls methods that exist on the real service', async () => {
+    calls.length = 0
+    await search.execute({ query: 'anything' }, EXEC)
+    const used = new Set(calls.map(([op]) => op))
+    for (const op of used) {
+      assert.ok(op in sessionQuery, `called sq.${op}(), which is not a real SessionQuery method`)
+    }
+    assert.ok(used.has('listSessions') && used.has('filterEvents'))
+  })
+
+  await test('session_search: finds the matching session and snippets around the hit', async () => {
+    const result = await search.execute({ query: 'found it' }, EXEC)
     assert.equal(result.total, 1)
     assert.equal(result.truncated, false)
+    assert.equal(result.scanned, 2, 'both sessions are opened when neither limit is reached')
     const [s] = result.sessions
     assert.equal(s.sessionId, 's-1')
     assert.equal(s.title, 'Session One')
     assert.equal(s.cwd, '/home/alice/project')
-    assert.equal(s.snippet, 'found it here')
+    assert.match(s.snippet, /found it here/)
     assert.equal(s.matchedEventSeq, 4)
+    assert.equal(s.matches, 1)
   })
 
-  await test('session_search: a throwing backend becomes {error}, not an unhandled rejection', async () => {
-    const result = await search.execute({ query: 'boom' }, EXEC)
+  await test('session_search: a query matching nothing returns an empty result, not an error', async () => {
+    const result = await search.execute({ query: 'no-such-text-anywhere' }, EXEC)
+    assert.deepEqual(result.sessions, [])
+    assert.equal(result.total, 0)
+    assert.equal(result.error, undefined)
+  })
+
+  await test('session_search: the query is matched literally — regex metacharacters cannot inject', async () => {
+    const result = await search.execute({ query: 'f.und it' }, EXEC)
+    assert.equal(result.total, 0, '"." must not act as a wildcard')
+  })
+
+  await test('session_search: whitespace between words is flexible', async () => {
+    const result = await search.execute({ query: 'found    it' }, EXEC)
+    assert.equal(result.total, 1)
+  })
+
+  await test('session_search: stops opening sessions once maxScan is hit and says so', async () => {
+    const result = await search.execute({ query: 'found it', maxScan: 1 }, EXEC)
+    assert.equal(result.scanned, 1)
+    assert.equal(result.truncated, true, 'a bounded scan must not look exhaustive')
+  })
+
+  await test('session_search: one unreadable session does not sink the whole search', async () => {
+    const broken = {
+      ...sessionQuery,
+      async listSessions() {
+        return [
+          { header: header('boom'), live: true, persisted: false },
+          { header: header('s-1', { cwd: '/home/alice/project' }), live: true, persisted: false },
+        ]
+      },
+    }
+    const { ctx: c2, registered: r2 } = makeCtx(broken)
+    apply(c2)
+    const result = await r2.get('agent_session_search').execute({ query: 'found it' }, EXEC)
+    assert.equal(result.total, 1, 'the readable session is still returned')
+    assert.equal(result.sessions[0].sessionId, 's-1')
+  })
+
+  await test('session_search: a listing failure becomes {error}, not an unhandled rejection', async () => {
+    const broken = { ...sessionQuery, async listSessions() { throw new Error('backend unavailable') } }
+    const { ctx: c2, registered: r2 } = makeCtx(broken)
+    apply(c2)
+    const result = await r2.get('agent_session_search').execute({ query: 'x' }, EXEC)
     assert.equal(result.error, 'backend unavailable')
   })
 
@@ -238,17 +354,17 @@ async function main() {
     const result = await read.execute({ sessionId: 's-1' }, EXEC)
     assert.equal(result.title, 'Session One')
     assert.equal(result.cwd, '/home/alice/project')
-    assert.equal(result.totalEvents, 2)
-    assert.equal(result.events.length, 2)
+    assert.equal(result.totalEvents, 3)
+    assert.equal(result.events.length, 3)
     assert.equal(result.events[0].text, 'hello')
-    assert.equal(result.events[1].text.length, 4001) // 4000 chars + the truncation marker
-    assert.ok(result.events[1].text.endsWith('…'))
+    assert.equal(result.events[2].text.length, 4001) // 4000 chars + the truncation marker
+    assert.ok(result.events[2].text.endsWith('…'))
   })
 
   await test('session_read: maxEvents keeps the most recent N events', async () => {
     const result = await read.execute({ sessionId: 's-1', maxEvents: 1 }, EXEC)
     assert.equal(result.events.length, 1)
-    assert.equal(result.events[0].seq, 1)
+    assert.equal(result.events[0].seq, 5)
   })
 
   console.log(`\n${passed} passed, ${failed} failed`)

@@ -4,3 +4,7 @@
       name: 'dsh-session-search-pro'
       config:
         maxResults: 10
+        # How many sessions the search may open when the FTS5 index is
+        # unavailable. dsh-base ships the index disabled (openAt: never), so on
+        # a stock profile this is the path that actually runs — see the README.
+        maxScan: 200

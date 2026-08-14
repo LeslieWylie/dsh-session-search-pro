@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-search-pro",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Indexed cross-session search for DeepSeek Harness — search, list, and read past and current DSH sessions through the built-in sessionQuery service. Zero runtime dependencies.",
   "type": "module",
   "main": "./lib/index.js",
@@ -12,6 +12,7 @@
   },
   "files": [
     "lib",
+    "tests",
     "cordis.patch.yml",
     "README.md",
     "README.zh-CN.md",
@@ -31,7 +32,7 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "test": "node tests/tools.test.mjs"
+    "test": "node tests/tools.test.mjs && node tests/boot.test.mjs"
   },
   "dsh": {
     "bundle": {
@@ -53,5 +54,13 @@
     "search",
     "agent-tools",
     "cordis"
-  ]
+  ],
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    }
+  }
 }
