@@ -1,33 +1,57 @@
 {
   "name": "dsh-session-search-pro",
   "version": "0.1.0",
-  "description": "Advanced cross-session full-text search for DeepSeek Harness — search past and current DSH sessions using the built-in sessionQuery service",
+  "description": "Indexed cross-session search for DeepSeek Harness — search, list, and read past and current DSH sessions through the built-in sessionQuery service. Zero runtime dependencies.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "author": "LeslieWylie",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeslieWylie/dsh-session-search-pro.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LeslieWylie/dsh-session-search-pro/issues"
+  },
+  "homepage": "https://github.com/LeslieWylie/dsh-session-search-pro#readme",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "test": "node tests/tools.test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6"
+  },
   "keywords": [
     "dsh-plugin",
     "dsh",
     "deepseek-harness",
     "session-search",
     "search",
-    "agent-tools"
-  ],
-  "license": "MIT",
-  "author": "LeslieWylie",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/LeslieWylie/dsh-session-search-pro"
-  },
-  "dsh": {
-    "plugin": {
-      "id": "dsh-session-search-pro",
-      "entry": "lib/index.js",
-      "config": {
-        "maxResults": 10,
-        "readWindow": 50
-      }
-    }
-  },
-  "peerDependencies": {
-    "cordis": "^4.0.0",
-    "@deepseek-ai/dsh": "^0.1.0-rc.6"
-  }
+    "agent-tools",
+    "cordis"
+  ]
 }

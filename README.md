@@ -1,161 +1,154 @@
-# dsh-session-search-pro
+# 🔍 dsh-session-search-pro
 
-> Advanced cross-session full-text search for DeepSeek Harness — search past and current DSH sessions using the built-in `sessionQuery` service.
+**English** | [简体中文](./README.zh-CN.md)
+
+> **Search every DSH session you've ever had — past and current — without leaving the one you're in.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/dsh-plugin-8A2BE2)](https://github.com/topics/dsh-plugin)
 
-## Why another session search plugin?
+Three agent tools for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), built on the runtime's own indexed **`sessionQuery`** service instead of scanning session files by hand.
 
-The existing [dsh-session-search](https://github.com/Tieboyh/dsh-session-search) is well-engineered, but it's **index-free** — every search decompresses and scans all zstd session files from scratch. This plugin takes a different approach: it uses DSH's built-in **`sessionQuery`** service, which provides indexed, full-text search across all DSH sessions (both past and current).
+---
 
-### Key differences vs dsh-session-search
+## Install
+
+Nothing here is on npm yet, so install straight from GitHub. Add it to your profile's `package.json`:
+
+```jsonc
+// ~/.dsh/profiles/<profile>/package.json
+{
+  "dependencies": {
+    "dsh-session-search-pro": "github:LeslieWylie/dsh-session-search-pro"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": ["dsh-session-search-pro"]
+    }
+  }
+}
+```
+
+Then reinstall and restart the profile:
+
+```sh
+cd ~/.dsh/profiles/<profile> && pnpm install
+dsh --profile <profile>
+```
+
+Pin a tag instead of tracking the default branch with `github:LeslieWylie/dsh-session-search-pro#v0.1.0`.
+
+<details>
+<summary>Try it without editing your profile</summary>
+
+The package ships its own `cordis.patch.yml`, so once it's installed into the profile's `node_modules` you can mount it for a single run with the launcher's `--patch` flag instead of touching `dsh.profile.bundles`:
+
+```sh
+cd ~/.dsh/profiles/<profile> && pnpm add github:LeslieWylie/dsh-session-search-pro
+dsh --profile <profile> --patch ./node_modules/dsh-session-search-pro/cordis.patch.yml
+```
+
+</details>
+
+## Why another session-search plugin?
+
+[dsh-session-search](https://github.com/Tieboyh/dsh-session-search) by Tieboyh is well-engineered, but it's **index-free** — every search decompresses and scans zstd session files from scratch. This plugin instead calls the harness's own **`sessionQuery`** service, which already maintains an index across every session, live or archived.
 
 | Aspect | dsh-session-search (Tieboyh) | dsh-session-search-pro |
 |--------|-------------------------------|------------------------|
-| **Search method** | Full scan of zstd files on every call | Uses DSH's built-in indexed `sessionQuery` service |
-| **Current session** | ❌ Not searchable | ✅ Searchable via `sessionQuery` |
-| **Speed** | O(n) full scan, slow with many sessions | O(log n) indexed search |
-| **Manual zstd parsing** | ✅ Yes (structural frame scan) | ❌ No — uses the DSH runtime API |
-| **External sources** | codex, claude, pi, opencode | DSH only (single runtime) |
-| **Tool count** | 2 tools | 3 tools (search + read + list) |
-| **Session browser** | ❌ No | ✅ `agent_session_list` with previews |
-| **Messages cap** | 4,000 chars | 4,000 chars per message |
-| **File size limit** | 64 MB per file | No limit (uses runtime API) |
-| **Dependencies** | ripgrep, node:zlib | None (zero external deps) |
-
-## Features
-
-### 3 Agent Tools
-
-| Tool | Description |
-|------|-------------|
-| **`agent_session_search`** | Full-text search across all DSH sessions. Returns matching sessions with snippets, ranked by relevance. Supports workspace filtering and pagination. |
-| **`agent_session_read`** | Read the full content of a specific session by ID. Returns messages, metadata, timestamps. |
-| **`agent_session_list`** | List all DSH sessions with optional workspace filter, sort, and preview of the last message. |
+| Search method | Full scan of zstd files on every call | DSH's built-in indexed `sessionQuery` service |
+| Current (in-progress) session | ❌ Not searchable | ✅ Searchable via `sessionQuery` |
+| Manual zstd parsing | ✅ Yes (structural frame scan) | ❌ No — goes through the harness API only |
+| External sources | codex, claude, pi, opencode | DSH only (single runtime) |
+| Tool count | 2 tools | 3 tools (search + list + read) |
+| Long event text | Capped at 4,000 chars | Capped at 4,000 chars per event |
+| Dependencies | ripgrep, node:zlib | None (zero runtime dependencies) |
 
 ### Benefits
 
-- ✅ **Zero external dependencies** — no ripgrep, no zstd parsing, no SQLite
-- ✅ **Indexed search** — uses DSH's built-in `sessionQuery.searchSessions()`
-- ✅ **Current session searchable** — not just archived sessions
-- ✅ **Defensive** — gracefully falls back to `listSessions()` + `filterEvents()` if `searchSessions()` is unavailable
-- ✅ **Read-only** — never modifies session data
+- ✅ **Zero runtime dependencies** — no ripgrep, no zstd parsing, no local database
+- ✅ **Indexed search** — full-text ranking via `sessionQuery.searchSessions()`, not a linear scan
+- ✅ **Current session is searchable** — not just sessions that have already ended
+- ✅ **Fails closed, not half-open** — if `sessionQuery` isn't available at all, the plugin logs a warning and registers no tools, rather than registering tools that would throw on first use
+- ✅ **Read-only** — never writes to a session; no database or cache of its own
 - ✅ **MIT licensed**
-
-## Installation
-
-### Prerequisites
-
-- DeepSeek Harness (DSH) with `sessionQuery` service available
-- Node.js 18+
-
-### Using dshx
-
-```sh
-git clone https://github.com/LeslieWylie/dsh-session-search-pro.git
-dshx install dsh-session-search-pro ./dsh-session-search-pro
-```
-
-### Manual mount
-
-Add to `~/.dsh/config.yaml`:
-
-```yaml
-plugins:
-  - id: dsh-session-search-pro
-    name: /path/to/dsh-session-search-pro/lib/index.js
-```
-
-### As a dynamic Cordis Plugin
-
-Use within any DSH session:
-
-```js
-// Define and run the plugin
-// (Use cordis_define + cordis_run in the DSH web GUI)
-```
 
 ## Usage
 
-### Search sessions
+The agent has access to these tools automatically once the plugin is bundled. Ask things like:
 
-The agent automatically has access to these tools. When you ask something like:
+> "Search my past sessions for anything about session search"
+> "List my recent sessions in ~/Desktop"
+> "Read session a4d75296-fc89-44b1 for me"
 
-> "Search my past sessions for anything about 'session search'"
-> "What did I discuss about DSH plugins?"
-> "Show me all sessions from the Desktop workspace"
+and the model reaches for `agent_session_search`, `agent_session_list`, or `agent_session_read` on its own.
 
-The model will use `agent_session_search` to find matching sessions.
+## Tool reference
 
-### Read a session
+### `agent_session_search`
 
-> "Read session session-03d68e2e-5bb3 for me"
+Full-text search across all DSH sessions, ranked by relevance, each hit carrying its best-matching snippet.
 
-The model will use `agent_session_read` to fetch and display the session content.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|--------------|
+| `query` | string | ✅ | Full-text search query (case-insensitive). Matched against session event content. |
+| `limit` | number | — | Maximum sessions to return, 1–50. Defaults to the plugin's `maxResults` config (10 unless overridden). |
 
-### List sessions
+### `agent_session_list`
 
-> "List my recent sessions"
-> "Show me sessions from the Desktop workspace"
+Lists sessions — past and current — with an optional working-directory filter, sorted newest- or oldest-first.
 
-The model will use `agent_session_list` to list and browse sessions.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|--------------|
+| `limit` | number | — | Maximum sessions to return, 1–100. Default 20. |
+| `cwd` | string | — | Substring filter over the session's working directory. |
+| `sort` | `"newest"` \| `"oldest"` | — | Sort order. Default `newest`. |
 
-## Tool Reference
+### `agent_session_read`
 
-### agent_session_search
+Reads one session by id: title, metadata, and its events in order.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `query` | string | **required** | Full-text search query (case-insensitive) |
-| `limit` | number | 10 | Max results (1-50) |
-| `workspace` | string | — | Workspace path substring filter |
-| `sort` | enum | `relevance` | `relevance`, `newest`, or `oldest` |
-| `includeContent` | boolean | true | Include snippets in results |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|--------------|
+| `sessionId` | string | ✅ | The session id to read, e.g. `"a4d75296-fc89-44b1"`. |
+| `maxEvents` | number | — | Maximum events to return, most recent first, 1–200. Default 50. |
 
-### agent_session_read
+## Plugin config
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `sessionId` | string | **required** | Session ID to read |
-| `maxMessages` | number | 50 | Max messages (1-200) |
-| `includeToolOutput` | boolean | false | Include tool call results |
+Set in the bundle row of `cordis.patch.yml` (or your own patch overlay):
 
-### agent_session_list
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | number | 20 | Max sessions (1-100) |
-| `workspace` | string | — | Workspace path substring filter |
-| `sort` | enum | `newest` | `newest` or `oldest` |
-| `includePreview` | boolean | true | Include last message preview |
+| Key | Default | Description |
+|-----|---------|--------------|
+| `maxResults` | `10` | Default `limit` for `agent_session_search` when the caller omits it. |
 
 ## How it works
 
-The plugin uses the `sessionQuery` service provided by the DSH runtime:
+The plugin is a thin layer over five methods on the harness's `sessionQuery` service — no parsing, no indexing, no cache of its own:
 
-1. **`searchSessions()`** — Full-text indexed search across all sessions (preferred)
-2. **`listSessions()`** + **`filterEvents()`** — Fallback when indexed search is unavailable
-3. **`readSession()`** — Complete session log extraction
-4. **`listSessions()`** — Session metadata listing
-5. **`readTitle()`** — Session title resolution
-6. **`readSurface()`** — Current model surface (for previews)
+- **`searchSessions()`** — ranked full-text search across all sessions; backs `agent_session_search`.
+- **`listSessions()`** — the full session list in deterministic newest-first order; backs `agent_session_list`.
+- **`filterSessions()`** — a safe existence check by id (returns `[]` rather than throwing for an unknown id); used by `agent_session_read` before it tries to fetch content.
+- **`filterEvents()`** — flat, pre-extracted per-event text; backs `agent_session_read`'s event content.
+- **`readTitle()`** / **`readTitleSnapshots()`** — single and batched title resolution. Session headers carry no title field of their own, so every tool that shows a title resolves it separately through one of these.
 
-All data is read-only. The plugin creates no database, index, or persistent cache of its own.
+All access is read-only. The plugin creates no database, index, or persistent cache of its own — it reads whatever `sessionQuery` already maintains.
 
 ## Limitations
 
-- **DSH only** — Does not search Codex, Claude Code, PI, or OpenCode sessions (unlike dsh-session-search)
-- **Requires sessionQuery** — The plugin gracefully degrades without it, but full-text search requires `sessionQuery.searchSessions()`
-- **Process restart** — Dynamic plugins are lost on restart; use manual mount for persistence
+- **DSH only** — does not search Codex, Claude Code, PI, or OpenCode sessions (unlike dsh-session-search).
+- **Requires `sessionQuery`** — all three tools depend on it; there's no reduced-functionality mode. If the service isn't injected, the plugin registers nothing rather than registering tools that would fail.
+- **`agent_session_read`'s event fetch has no cancellation support** — `filterEvents()` doesn't accept an abort signal in the underlying service, so an aborted read still finishes fetching before its result is discarded.
 
 ## Development
+
+Pure JavaScript, no build step. Source and release are the same file: `lib/index.js`.
 
 ```sh
 git clone https://github.com/LeslieWylie/dsh-session-search-pro.git
 cd dsh-session-search-pro
-# The plugin is pure JavaScript, no build step needed
-# Source is in src/index.js, release in lib/index.js
+pnpm install
+npm test   # runs tests/tools.test.mjs — imports lib/index.js and executes it
+           # against a stubbed sessionQuery; not a source-text/regex check
 ```
 
 ## License

@@ -1,0 +1,6 @@
+# One bundle row registers the three session tools against ctx.sessionQuery.
+- insert:
+    - id: session-search-pro
+      name: 'dsh-session-search-pro'
+      config:
+        maxResults: 10
