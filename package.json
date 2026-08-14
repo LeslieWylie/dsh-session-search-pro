@@ -1,0 +1,33 @@
+{
+  "name": "dsh-session-search-pro",
+  "version": "0.1.0",
+  "description": "Advanced cross-session full-text search for DeepSeek Harness — search past and current DSH sessions using the built-in sessionQuery service",
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "session-search",
+    "search",
+    "agent-tools"
+  ],
+  "license": "MIT",
+  "author": "LeslieWylie",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LeslieWylie/dsh-session-search-pro"
+  },
+  "dsh": {
+    "plugin": {
+      "id": "dsh-session-search-pro",
+      "entry": "lib/index.js",
+      "config": {
+        "maxResults": 10,
+        "readWindow": 50
+      }
+    }
+  },
+  "peerDependencies": {
+    "cordis": "^4.0.0",
+    "@deepseek-ai/dsh": "^0.1.0-rc.6"
+  }
+}
