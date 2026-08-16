@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # tests/boot.test.mjs resolves six harness packages before it will run a
+      # real cordis Context; if any is missing it prints SKIP and exits 0, which
+      # reads as a green pass while the actual integration check never executed.
+      # They're devDependencies (not just peers) so `npm install` alone resolves
+      # them. Each is pinned to the exact 0.1.0-rc.6 build rather than a caret
+      # range: npm's `latest` tag for this whole harness line still points at the
+      # older 0.0.1-rc.1 series, several minors behind what installed profiles
+      # actually run.
+      - run: npm install
+      - run: npm test
