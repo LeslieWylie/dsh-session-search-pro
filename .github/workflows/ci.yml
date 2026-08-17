@@ -23,3 +23,9 @@ jobs:
       # actually run.
       - run: npm install
       - run: npm test
+        env:
+          # Enforce the note above instead of trusting someone to read the log:
+          # if the harness cannot be resolved, boot.test.mjs exits non-zero
+          # rather than printing SKIP and passing. A bare clone without the
+          # harness installed can still run `npm test` normally.
+          DSH_BOOT_STRICT: '1'

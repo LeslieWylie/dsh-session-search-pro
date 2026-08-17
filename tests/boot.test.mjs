@@ -31,6 +31,10 @@ for (const pkg of REQUIRED) {
     console.log(`SKIP boot test — ${pkg} is not resolvable from here.`)
     console.log('Run it from inside an installed profile:')
     console.log('  cd ~/.dsh/profiles/<profile>/node_modules/dsh-session-search-pro && node tests/boot.test.mjs')
+    if (process.env.DSH_BOOT_STRICT === '1') {
+      console.log('DSH_BOOT_STRICT=1: an unexercised boot check counts as a failure, not a pass.')
+      process.exit(1)
+    }
     process.exit(0)
   }
 }
