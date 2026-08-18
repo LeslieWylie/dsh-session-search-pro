@@ -32,7 +32,8 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "test": "node tests/tools.test.mjs && node tests/boot.test.mjs"
+    "test": "node tests/tools.test.mjs && node tests/boot.test.mjs",
+    "check-install": "node scripts/check-install.mjs"
   },
   "dsh": {
     "bundle": {
@@ -60,13 +61,5 @@
     "search",
     "agent-tools",
     "cordis"
-  ],
-  "peerDependenciesMeta": {
-    "@deepseek-ai/cordis": {
-      "optional": true
-    },
-    "@deepseek-ai/dsh-tools": {
-      "optional": true
-    }
-  }
+  ]
 }

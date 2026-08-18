@@ -29,3 +29,23 @@ jobs:
           # rather than printing SKIP and passing. A bare clone without the
           # harness installed can still run `npm test` normally.
           DSH_BOOT_STRICT: '1'
+
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Everything above runs inside this repository, where the harness resolves
+      # out of devDependencies. A person installing the published package has
+      # none of that, and the two situations disagreed: the harness peers were
+      # marked `optional: true` while lib/index.js imports one of them at the
+      # top level, so npm installed none of them and the first import threw
+      # ERR_MODULE_NOT_FOUND. Every test passed the whole time.
+      #
+      # This job packs the tarball, installs it into an empty project, and
+      # imports it by name — the round trip nothing else here performs. Proved
+      # by restoring `optional: true`: exit 1 with it, exit 0 without.
+      - run: node scripts/check-install.mjs
